@@ -17,13 +17,10 @@ pygame.display.set_caption('Chess')
 #A1 is top left corner
 #moves are represented by [prevSquare, newSquare, pieceMoved]
 
-###Castling, en passant and promotion broken
-###Check script completely broken
-###Fix bugs with possible move dots (checks)
+
 ###No castling while in/through check
 ###Can't move king in front of enemy pawn because it views moving the pawn forward as a viable move and thus thinks the king would be in check.
 ###Bug with getBestMove returning squares with None
-###Redo pawnMove scripts etc to remove place and stuff for castling etc. 
 ###Draw by repitition
 ###Clocks
 ###UI
@@ -90,7 +87,7 @@ pieceHeatMaps = {
   ],
 
   "queen" : [
-    [0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0],
@@ -159,6 +156,7 @@ class Bot:
     bestScore = -9223372036854775807
     moveList = position.getPossibleMovesWithCheck(colour)
     #print(position.pieces[31].square)
+    
     for move in moveList:
       #print(move)
       copyMove = []
@@ -204,13 +202,7 @@ class Bot:
           for i in board.pieces:
             if i.square == bestMove[2].square:
               bestMove[2] = i
-    #position.show()
-    #pygame.display.update()
-    #print(bestScore)
-    #print(colour)
-    #if bestScore != 0:
-      #print(bestMove)
-      #time.sleep(30)
+              
     return bestScore, bestMove
     
   def evaluate(self, position):
@@ -233,6 +225,12 @@ class Bot:
               heat = pieceHeatMaps[piece.type][7-piece.square[1]][piece.square[0]]
             score += heat * 0.19
           #print("\t\t",piece.type, piece.square, heat, score)
+    moveList = position.getPossibleMovesWithCheck(self.colour)
+    if len(moveList) == 0:
+      if position.checkBoolInPosition(self.colour):
+        score = 0
+      else:
+        score = 9223372036854775807
     return score  
     
   def oldSearch(self, position, colour):
@@ -256,40 +254,36 @@ class Bot:
     self.depth += 1
     if self.depth <= self.maxDepth:
       moveList = position.getPossibleMovesWithCheck(colour)
-      #print("2",position.pieces[14].square)
-      #print("3",moveList[0][2].square)
       for move in moveList:
-        #print("move: ", time.time() - lastTime)
         lastTime = time.time()
         if move[0] != None:
-          #print("move:", move[0], move[1], move[2].type)
           newPosition = position.copy()
           for i in newPosition.pieces:
             if i.square == move[2].square:
               move[2] = i
-          #print("4",move[2].square)  
           if newPosition.grid[move[1][1]][move[1][0]] != 0:
             
             take(newPosition, newPosition.grid[move[1][1]][move[1][0]])  
           place(newPosition, move)
-          #print("g",newPosition.pieces[24].square)
           
           self.moveTree.append(move)
           if colour == "white":
             newColour = "black"
           else:
             newColour = "white"
-          #print(move)
-          #print(newPosition.pieces[31].square)
           eval, enemyMove = self.getBestMove(newPosition, newColour)
-          #print("Emove: ", enemyMove[0], enemyMove[1], enemyMove[2].type)
-          nextPosition = newPosition.copy()
-          for i in nextPosition.pieces:
-            #print(i.square, enemyMove[2].square)
-            if i.square == enemyMove[2].square:
-             enemyMove[2] = i
-          #nextPosition.move(enemyMove)
-          #nextPosition.show()
+          if enemyMove != None:
+            nextPosition = newPosition.copy()
+            for i in nextPosition.pieces:
+              
+              if i.square == enemyMove[2].square:
+               enemyMove[2] = i
+            nextPosition.move(enemyMove)
+            nextPosition.show()
+          else:
+            ### There are no moves available so its stalemate or checkmate
+            self.deth = self.maxDepth + 1
+              
           #for i in nextPosition.pieces:
           #  #print(i.type, i.square)
           pygame.display.update()
@@ -321,7 +315,7 @@ class Bot:
         for piece in board.pieces:
           if piece.square == self.bestMove[0]:
             self.bestMove[2] = piece
-      #print("bestMove: ", self.bestMove[0], self.bestMove[1], self.bestMove[2].type) 
+            
   def move(self):
     #print("1",board.pieces[14].square)
     #print(board.pieces[31].square)
@@ -407,9 +401,9 @@ class Grid:
     #print(self.pieces[19].moveCount)
     #print(bot.evaluate(board))
     if self.colour == "white":
-      #'''
+      
       self.playerMove()
-      #'''
+      
       #wbot.move()
     else:
       #bot.move()
@@ -424,25 +418,29 @@ class Grid:
   def move(self, move):
     if self.grid[move[1][1]][move[1][0]] != 0:
       take(self, self.grid[move[1][1]][move[1][0]])
+    else:  
+      if move[2].type == "pawn":
+        if move[1][0] != move[0][0]: # If its moving diagonally
+          if self.grid[move[1][1]][move[1][0]] == 0: # And its moving to an empty square
+            take(self,self.grid[move[0][1]][move[1][0]])
+            
+    if move[2].type == "pawn":
+      if move[1][1] == 0 or move[1][1] == 7:
+        promote(self, move[2], move[1])
+        
     place(self, move)
     if move[2].type == "king":
       if move[1][0]-move[0][0] == -2:
         for piece in self.pieces:
-          if piece.type == "rook" and piece.moveCount == 0 and piece.colour == move[2].colour and piece.square[0] < move[0][0]:
-            place(self, [piece.square, [move[1][0]+1,piece.square[1]], piece])
+          if piece.square != None:
+            if piece.type == "rook" and piece.moveCount == 0 and piece.colour == move[2].colour and piece.square[0] < move[0][0]:
+              place(self, [piece.square, [move[1][0]+1,piece.square[1]], piece])
             
       elif move[1][0] - move[0][0] == 2:
         for piece in self.pieces:
-          if piece.type == "rook" and piece.moveCount == 0 and piece.colour == move[2].colour and piece.square[0] > move[0][0]:
-            place(self, [piece.square, [move[1][0]-1, piece.square[1]], piece])
-
-    if move[2].type == "pawn":
-      if move[1][0] - move[0][0] != 0: # If its moving diagonally
-        if self.grid[move[1][1]][move[1][0]] == 0: # And its moving to an empty square
-          take(self,self.grid[move[0][1]][move[1][0]])
-
-      if move[1][1] == 0 or move[1][1] == 7:
-        promote(self, move[2], move[1])
+          if piece.square != None:
+            if piece.type == "rook" and piece.moveCount == 0 and piece.colour == move[2].colour and piece.square[0] > move[0][0]:
+              place(self, [piece.square, [move[1][0]-1, piece.square[1]], piece])  
   def playerMove(self):
     for event in pygame.event.get():
       if event.type == pygame.MOUSEBUTTONDOWN:
@@ -464,21 +462,6 @@ class Grid:
           holding = False
           for piece in self.pieces:
             piece.hold = False
-        
-  def get_possible_moves_without_check(self, colour):
-    global getMovesCount # for testing
-    getMovesCount += 1
-    possibleMoves = []
-    test = []
-    
-    for piece in self.pieces:
-      if piece.square != None and piece.colour == colour:
-        for rank in range(len(self.grid)):
-          for file in range(len(self.grid[rank])):
-            if piece.verifyMove(self, piece.square, [rank, file], piece, False):
-              possibleMoves.append([piece.square,[rank, file],piece])
-    
-    return possibleMoves
   def new_get_possible_moves_without_check(self, colour):
     possibleMoves = []
     for piece in self.pieces:
@@ -486,145 +469,117 @@ class Grid:
         possibleMoves += piece.getMoves(self)
     #if possibleMoves[0][2].type == "knight":  
       #print(possibleMoves[0][2].square)
-    return possibleMoves
-    
+    return possibleMoves  
   def getPossibleMovesWithCheck(self, colour):
     moveList = self.new_get_possible_moves_without_check(colour)
     newList = []
-    
-    #print("1.1",moveList[0][2].square)
     for move in moveList:
-      #print("f",move[2].square)
-      if self.checkVerify(move, True) == True and (None not in move):
+      if self.checkBoolFromMove(move) == False and (None not in move):
         newList.append(move)
-      #print("g",move[2].square)
-    #print("1.2",newList[0][2].square)
     
     return newList
-  def checkVerify(self, move, mateCheck):
+  def checkBoolFromMove(self, move): # If they do this move will they be in check?
     global holding
+    #print(move[0], move[1], move[2].type)
     copyOfMove = []
     for i in move:
       copyOfMove.append(copy.copy(i))
-    prevSquare = copyOfMove[0]
-    newSquare = copyOfMove[1]
     pieceMoved = copyOfMove[2]
-    
-    for piece in self.pieces:
-      if piece.colour == pieceMoved.colour and piece.type == "king":
-        yourKing = piece
-      if piece.colour != pieceMoved.colour and piece.type == "king":
-        enemyKing = piece
-    if pieceMoved.colour == "white":
-      enemyColour = "black"
-    else:
-      enemyColour = "white"
-    
-    
-    
     ### MOVE PIECE ###
-    #pieceIndex = self.pieces.index(pieceMoved)
     
     for i in self.pieces:
       if i.square == pieceMoved.square:
         pieceIndex = self.pieces.index(i)
-    
-    '''
-    newPieces = copy.copy(self.pieces)
-    board = copy.copy(self.grid)
-    takenPiece = None
-    prevHoldBool = self.pieces[pieceIndex].hold
-    prevHoldingBool = holding
-  
-    for piece in newPieces:
-      if piece.square == newSquare:
-        take(self,piece)
-        takenPiece = piece
-
-    lastMove = copy.copy(newPieces[pieceIndex].lastMove)
-    place(self, newPieces[pieceIndex], newSquare)
-    '''
     newBoard = self.copy()
     pieceMoved = newBoard.pieces[pieceIndex]
-    #print("FFF", pieceMoved.square)
     
     copyOfMove[2] = pieceMoved # Might not be necessary as it might automatically overwrite
     
-    #print(pieceIndex, move[2].type, move[2].square, move[0], move[1])
     takenPiece = None
-    #print("f",move[2].square)
     newBoard.move(copyOfMove)
-    #print("g",move[2].square)
-    
+
+    ### CHECK ###
+    check = newBoard.checkBoolInPosition(move[2].colour)
+    return check
+  def checkBoolInPosition(self, colour): # Is colour in check
+    if colour == "white":
+      enemyColour = "black"
+    else:
+      enemyColour = "white"
     
     ### GET POSSIBLE MOVES ###
-    possibleMoves = newBoard.new_get_possible_moves_without_check(pieceMoved.colour)
-    enemyPossibleMoves = newBoard.new_get_possible_moves_without_check(enemyColour)
-  
+    enemyPossibleMoves = self.new_get_possible_moves_without_check(enemyColour)
     possibleMove = True
     
-    
-              
-    ### CHECK IF KING ATTACKED
-    for move2 in enemyPossibleMoves:
-      if yourKing.square == move2[1]:
+    for piece in self.pieces:
+      if piece.colour == colour and piece.type == "king":
+        yourKing = piece
+        
+    ### CHECK IF KING IS ATTACKED
+    check = False
+    for move in enemyPossibleMoves:
+      if yourKing.square == move[1]:
         check = True
-        possibleMove = False
+    return check
+  def statemate_bool_from_move(self, move):
+    global holding
+    #print(move[0], move[1], move[2].type)
+    copyOfMove = []
+    for i in move:
+      copyOfMove.append(copy.copy(i))
+    pieceMoved = copyOfMove[2]
+    ### MOVE PIECE ###
+    
+    for i in self.pieces:
+      if i.square == pieceMoved.square:
+        pieceIndex = self.pieces.index(i)
+    newBoard = self.copy()
+    pieceMoved = newBoard.pieces[pieceIndex]
+    
+    copyOfMove[2] = pieceMoved # Might not be necessary as it might automatically overwrite
+    
+    takenPiece = None
+    newBoard.move(copyOfMove)
 
-    
-    
-    ### CHECK IF ATTACKING KING
-    if mateCheck == False:
-      for move2 in possibleMoves:
-        if enemyKing.square == move2[1]:
-          check = True
-        
-          ## For every move check if it removes the check
-          ## which means checking if their king's square is no longer in the moves list
-    
-          ## generate move list () 
-          ## for move in move list:
-          ##   board after move = ???
-          ##   if king.square not in get_possible_moves(boardAfterMove...)
-        
-          movelist = newBoard.new_get_possible_moves_without_check(enemyColour) ## Figure out how to get all moves         
-                    
-          checkMate = True
-          for move3 in movelist:
-            #print(move[0], move[1], move[2].type)
-            
-            if self.checkVerify(move3, True) == True:
-              #print()
-              checkMate = False
-        
-          if checkMate == True:
-            CHECKMATE(copyOfMove[2].colour)
-     
-      
-    ### MOVE PIECE BACK ###
-    
-    #piece = new[pieceIndex]
-    #piece.lastMove = lastMove
-    #piece.moveCount -= 1
-    #board[prevSquare[1]][prevSquare[0]] = piece
-    
-    #piece.square = prevSquare
-    #piece.hold = prevHoldBool
-    #holding = prevHoldingBool
-    #board[newSquare[1]][newSquare[0]] = 0
-    #if takenPiece != None:
-    #  takenPiece.square = newSquare
-    #  board[newSquare[1]][newSquare[0]] = takenPiece
-    
-    
-    return possibleMove
-  def stalemateVerify(self,move):
+    stalemate = newBoard.stalemate_bool_in_position(move[2].colour)
+    return stalemate
+  def stalemate_bool_in_position(self, colour):
     draw = False
-    if len(self.getPossibleMovesWithCheck(move[2].colour)) == 0 and self.checkVerify(move, False) == True:
-      draw = True 
-    if self.repeatedMoves == 3:
+    if len(self.getPossibleMovesWithCheck(colour)) == 0 and self.checkBoolInPosition(colour) == False:
       draw = True
+      
+    #if self.repeatedMoves == 3:
+    #  draw = True
     return draw
+  def checkmate_bool_from_move(self, move):
+    global holding
+    #print(move[0], move[1], move[2].type)
+    copyOfMove = []
+    for i in move:
+      copyOfMove.append(copy.copy(i))
+    pieceMoved = copyOfMove[2]
+    ### MOVE PIECE ###
+    
+    for i in self.pieces:
+      if i.square == pieceMoved.square:
+        pieceIndex = self.pieces.index(i)
+    newBoard = self.copy()
+    pieceMoved = newBoard.pieces[pieceIndex]
+    
+    copyOfMove[2] = pieceMoved # Might not be necessary as it might automatically overwrite
+    
+    takenPiece = None
+    newBoard.move(copyOfMove)
+
+    checkmate = newBoard.checkmate_bool_in_position(move[2].colour)
+    return checkmate
+  def checkmate_bool_in_position(self, colour):
+    moves = self.getPossibleMovesWithCheck(colour)
+    if len(moves) == 0 and self.checkBoolInPosition(colour) == True:
+      checkmate = True
+    else:
+      checkmate = False
+    return checkmate
 class Piece:
   def __init__(self,type, square, colour, verifyMove):
     self.square = square
@@ -646,17 +601,20 @@ class Piece:
     #otherPiece = board.grid[move[1][1]][move[1][0]]
     #if self.verifyMove(board, self.square, move[1], self, True):
     if move in self.getMoves(board):
-      if board.checkVerify(move, False):
-        if board.stalemateVerify(move) == False:
-          board.move(move)
-          self.moveCount += 1
-          self.lastMove = board.turn
-          board.turn += 1
-          if board.colour == "white":
-            board.colour = "black"
+      if board.checkBoolFromMove(move) == False:
+        if board.stalemate_bool_from_move(move) == False:
+          if board.checkmate_bool_from_move(move) == False:
+            board.move(move)
+            self.moveCount += 1
+            self.lastMove = board.turn
+            board.turn += 1
+            if board.colour == "white":
+              board.colour = "black"
+            else:
+              board.colour = "white"
+            board.moves.append(move)
           else:
-            board.colour = "white"
-          board.moves.append(move)
+            CHECKMATE()
         else:
           STALEMATE()        
   def show(self):
@@ -665,10 +623,11 @@ class Piece:
     if self.hold == True:
       moves = self.getMoves(board)
       for move in moves:
-        rank = move[1][0]
-        file = move[1][1]
-    
-        screen.blit(board.dotSprite, (rank*50+10,file*50+10))       
+        if board.checkBoolFromMove(move):
+          rank = move[1][0]
+          file = move[1][1]
+      
+          screen.blit(board.dotSprite, (rank*50+10,file*50+10))       
   def getMoves(self, position):
     moves = []
     if self.type == "pawn":
@@ -681,12 +640,12 @@ class Piece:
             if position.grid[self.square[1] + 1][self.square[0] + 1] != 0:
               if position.grid[self.square[1] + 1][self.square[0] + 1].colour != self.colour:
                 moves.append([self.square, [self.square[0] + 1, self.square[1] + 1], self])
-          if 0 < self.square[0] - 1:
+          if 0 <= self.square[0] - 1:
             if position.grid[self.square[1] + 1][self.square[0] - 1] != 0:
               if position.grid[self.square[1] + 1][self.square[0] - 1].colour != self.colour:
                 moves.append([self.square, [self.square[0] - 1, self.square[1] + 1], self])
         if self.square[1] + 2 < 8:
-          if position.grid[self.square[1] + 2][self.square[0]] == 0 and self.moveCount == 0:
+          if position.grid[self.square[1] + 2][self.square[0]] == 0 and self.moveCount == 0 and position.grid[self.square[1] + 1][self.square[0]] == 0:
             moves.append([self.square, [self.square[0], self.square[1] + 2], self])
         if self.square[1] == 4:
           if self.square[0] + 1 < 8:
@@ -713,7 +672,7 @@ class Piece:
               if position.grid[self.square[1] - 1][self.square[0] - 1].colour != self.colour:
                 moves.append([self.square, [self.square[0] - 1, self.square[1] - 1], self])
         if 0 <= self.square[1] - 2:
-          if position.grid[self.square[1] - 2][self.square[0]] == 0 and self.moveCount == 0:
+          if position.grid[self.square[1] - 2][self.square[0]] == 0 and self.moveCount == 0 and position.grid[self.square[1] - 1][self.square[0]] == 0:
             moves.append([self.square, [self.square[0], self.square[1] - 2], self])
         if self.square[1] == 3:
           if self.square[0] + 1 < 8:
@@ -726,11 +685,6 @@ class Piece:
             if otherPiece != 0:
               if otherPiece.type == "pawn" and otherPiece.lastMove == position.turn - 1:
                 moves.append([self.square, [self.square[0]-1, self.square[1]-1], self])
-    
-                      
-      ###ADD
-      ### 2. En passant (half done)
-      ### 3. Black pieces
     elif self.type == "rook":
       for y in range(1, 8):
         newSquare = [self.square[0], self.square[1] + y]
@@ -946,15 +900,332 @@ class Piece:
         for piece in position.pieces:
           if piece.type == "rook" and piece.moveCount == 0 and piece.square != None:
             if piece.square[0] < self.square[0]:
-              if position.grid[self.square[1]][self.square[0] - 2] == 0:
+              possibleMove = True
+              for i in range(piece.square[0] + 1, self.square[0]):
+                
+                if position.grid[self.square[1]][i] != 0:
+                  possibleMove = False
+              if possibleMove:
                 moves.append([self.square, [self.square[0] - 2, self.square[1]], self])
             else:
-              if position.grid[self.square[1]][self.square[0] + 2] == 0:
+              possibleMove = True
+              for i in range(self.square[0] + 1, piece.square[0]):
+                if position.grid[self.square[1]][i] != 0:
+                  possibleMove = False
+              if possibleMove:
                 moves.append([self.square, [self.square[0] + 2, self.square[1]], self])
     return moves
+def pawnMove(position, prevSquare,newSquare, piece, moving):
+  legalMove = False
+  if newSquare[0]-prevSquare[0] == 0:
+    if position.grid[newSquare[1]][newSquare[0]] == 0:
+      if piece.colour == "white":
+        if newSquare[1]-prevSquare[1] == 1:
+          legalMove = True
+    
+        if piece.moveCount == 0:
+          if newSquare[1]-prevSquare[1] == 2:
+            if position.grid[prevSquare[1]+1][newSquare[0]] == 0:
+              legalMove = True
+            else:
+              legalMove = False
+            
+        if legalMove == True:
+          if newSquare[1] == 7:
+            promote(position, piece, newSquare)
+      else:
+        if newSquare[1]-prevSquare[1] == -1:
+          legalMove = True
+    
+        if piece.moveCount == 0:
+          if newSquare[1]-prevSquare[1] == -2:
+            if position.grid[prevSquare[1]-1][newSquare[0]] == 0:
+              legalMove = True
+            
+        if legalMove == True:
+          if newSquare[1] == 0:
+            promote(position, piece, newSquare)
+            
+  elif abs(newSquare[0]-prevSquare[0]) == 1:
+    if position.grid[newSquare[1]][newSquare[0]] != 0:
+      if piece.colour == "white":
+        if newSquare[1]-prevSquare[1] == 1:
+          legalMove = True
+    
+        #if piece.moveCount == 0:
+        #  if newSquare[1]-prevSquare[1] == 2:
+        #    legalMove = True
+            
+        if legalMove == True:
+          if newSquare[1] == 7:
+            if moving == True:
+              promote(position, piece, newSquare)
+      else:
+        if newSquare[1]-prevSquare[1] == -1:
+          legalMove = True
+    
+        #if piece.moveCount == 0:
+        #  if newSquare[1]-prevSquare[1] == -2:
+        #   legalMove = True
+            
+        if legalMove == True:
+          if newSquare[1] == 0:
+            if moving == True:
+              promote(piece, newSquare)
+    
+    if piece.colour == "white":
+      otherPiece = position.grid[newSquare[1]-1][newSquare[0]]
+      if otherPiece != 0:
+        if otherPiece.moveCount == 1 and newSquare[1] == 5 and otherPiece.lastMove == position.turn-1:
+          if abs(newSquare[1]-prevSquare[1]) == 1:
+            legalMove = True
+            if moving == True:
+              take(position, otherPiece)
+    else:
+      otherPiece = position.grid[newSquare[1]-1][newSquare[0]]
+      if otherPiece != 0:
+        if otherPiece.moveCount == 1 and newSquare[1] == 2 and otherPiece.lastMove == position.turn-1:
+          if newSquare[1]-prevSquare[1] == -1:
+            legalMove = True
+            if moving == True:
+              take(otherPiece)
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+    if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+      legalMove = False    
+  return legalMove   
+def rookMove(position, prevSquare, newSquare, piece, moving):
+  legalMove = False
+  path = []
+  if prevSquare[0] == newSquare[0]:
+    legalMove = True
+    if prevSquare[1]>newSquare[1]:
+      for i in range(newSquare[1]+1,prevSquare[1]):
+        otherPiece = position.grid[i][newSquare[0]]
+        path.append(otherPiece)
+        
+    else:
+      for i in range(prevSquare[1]+1,newSquare[1]):
+        otherPiece = position.grid[i][newSquare[0]]
+        path.append(otherPiece)
+  elif prevSquare[1] == newSquare[1]:
+    legalMove = True
+    if prevSquare[0]>newSquare[0]:
+      for i in range(newSquare[0]+1,prevSquare[0]):
+        otherPiece = position.grid[newSquare[1]][i]
+        path.append(otherPiece)
+        
+    else:
+      for i in range(prevSquare[0]+1,newSquare[0]):
+        otherPiece = position.grid[newSquare[1]][i]
+        path.append(otherPiece)
 
+  
+  jumping = False
+  for square in path:
+    if square != 0:
+      jumping = True
+      #print(jumping)  
+  if jumping == True:
+    legalMove = False
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+      if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+        legalMove = False
+  return legalMove 
+def knightMove(position, prevSquare, newSquare, piece, moving):
+  #if moving == True:
+    #print("f",position.grid[prevSquare[1]][prevSquare[0]]) 
+  legalMove = False
+  deltaUp = newSquare[1] - prevSquare[1]
+  deltaRight = newSquare[0] - prevSquare[0]
 
+  if abs(deltaUp) == 2:
+    if abs(deltaRight) == 1:
+      legalMove = True
+  elif abs(deltaUp) == 1:
+    if abs(deltaRight) == 2:
+      legalMove = True
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+    if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+      legalMove = False
+      
+  
+      
+  return legalMove
+def bishopMove(position, prevSquare, newSquare, piece, moving):
+  legalMove = False
+  deltaUp = newSquare[1] - prevSquare[1]
+  deltaRight = newSquare[0] - prevSquare[0]
+  path = []
+  
+  if abs(deltaUp) == abs(deltaRight):
+    legalMove = True
+    
+    if prevSquare[0] < newSquare[0]:
+      for i in range(1, newSquare[0]-prevSquare[0]):
+        if prevSquare[1] < newSquare[1]:
+          pos = [prevSquare[0]+i , prevSquare[1]+i]
+        else:
+          pos = [prevSquare[0]+i, prevSquare[1]-i]
+        square = position.grid[pos[1]][pos[0]]
+        path.append(square)
+        
+    else:
+      for i in range(1,prevSquare[0]-newSquare[0]):
+        if prevSquare[1] < newSquare[1]:
+          pos = [prevSquare[0]-i, prevSquare[1]+i]
+        else:
+          pos = [prevSquare[0]-i, prevSquare[1]-i]
+        square = position.grid[pos[1]][pos[0]]
+        path.append(square)
+
+  jumping = False
+  for square in path:
+    if square != 0:
+      jumping = True
+
+  if jumping == True:
+    legalMove = False
+
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+    if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+      legalMove = False
+        
+  return legalMove
+def queenMove(position, prevSquare, newSquare, piece, moving):
+  legalMove = False
+  path = []
+  
+  if prevSquare[0] == newSquare[0]:
+    legalMove = True
+    
+    if prevSquare[1]>newSquare[1]:
+      for i in range(newSquare[1]+1,prevSquare[1]):
+        otherPiece = position.grid[i][newSquare[0]]
+        path.append(otherPiece)
+        
+    else:
+      for i in range(prevSquare[1]+1,newSquare[1]):
+        otherPiece = position.grid[i][newSquare[0]]
+        path.append(otherPiece)
+        
+  elif prevSquare[1] == newSquare[1]:
+    legalMove = True
+    
+    if prevSquare[0]>newSquare[0]:
+      for i in range(newSquare[0]+1,prevSquare[0]):
+        otherPiece = position.grid[newSquare[1]][i]
+        path.append(otherPiece)
+        
+    else:
+      for i in range(prevSquare[0]+1,newSquare[0]):
+        otherPiece = position.grid[newSquare[1]][i]
+        path.append(otherPiece)
+
+  
+  deltaUp = newSquare[1] - prevSquare[1]
+  deltaRight = newSquare[0] - prevSquare[0]
+
+  if abs(deltaUp) == abs(deltaRight):
+    legalMove = True
+    
+    if prevSquare[0] < newSquare[0]:
+      for i in range(1, newSquare[0]-prevSquare[0]):
+        if prevSquare[1] < newSquare[1]:
+          pos = [prevSquare[0]+i , prevSquare[1]+i]
+        else:
+          pos = [prevSquare[0]+i, prevSquare[1]-i]
+        square = position.grid[pos[1]][pos[0]]
+        path.append(square)
+        
+    else:
+      for i in range(1,prevSquare[0]-newSquare[0]):
+        if prevSquare[1] < newSquare[1]:
+          pos = [prevSquare[0]-i, prevSquare[1]+i]
+        else:
+          pos = [prevSquare[0]-i, prevSquare[1]-i]
+        square = position.grid[pos[1]][pos[0]]
+        path.append(square)
+
+  jumping = False
+  for square in path:
+    if square != 0:
+      jumping = True
+
+  if jumping == True:
+    legalMove = False
+
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+    
+    if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+      legalMove = False
+
+  
+  
+  return legalMove
+def kingMove(position, prevSquare, newSquare, piece, moving):
+  
+  legalMove = False
+  path = []
+  
+  deltaUp = newSquare[1] - prevSquare[1]
+  deltaRight = newSquare[0] - prevSquare[0]
+
+  if deltaUp == 0 or abs(deltaUp) == 1:
+    if deltaRight == 0 or abs(deltaRight) == 1:
+      legalMove = True
+
+  if piece.moveCount == 0:
+    #print("TEST 0")
+    if abs(deltaRight) == 2 and deltaUp == 0:
+      #print("TEST 1")
+      if deltaRight == 2:
+        if piece.colour == "white":
+          i = position.grid[0][7]
+        else:
+          i = position.grid[7][7]
+      elif deltaRight == -2:
+        #print("TEST 2")
+        if piece.colour == "white":
+          #print("TEST 3")
+          i = position.grid[0][0]
+        else:
+          i = position.grid[7][0]
+          
+      if i != 0:
+        #print("TEST 4")
+        
+        if i.type == "rook" and i.moveCount == 0 and i.colour == piece.colour:
+          #print("TEST 5")
+          
+          legalMove = True
+
+          if deltaRight == 2:
+            for j in range(prevSquare[0]+1, 7):
+              path.append(position.grid[prevSquare[1]][j])
+          elif deltaRight == -2:
+            #print("TEST 6")
+            for j in range(1,prevSquare[0]):
+              path.append(position.grid[prevSquare[1]][j])
+            
+
+          for square in path:
+            if square != 0:
+              #print("taken")
+              legalMove = False
+              
+          if legalMove == True and moving == True:
+            if deltaRight == 2:
+              place(board, [i.square, [newSquare[0]-1,newSquare[1]], i])
+            else:
+              place(board, [i.square, [newSquare[0]+1,newSquare[1]], i])
+          
+  if position.grid[newSquare[1]][newSquare[0]] != 0:
+    if position.grid[newSquare[1]][newSquare[0]].colour == position.grid[prevSquare[1]][prevSquare[0]].colour:
+      legalMove = False
+      
+  return legalMove
 def take(position, piece):
+  #print(piece)
   position.grid[piece.square[1]][piece.square[0]] = 0
   piece.square = None
 def place(position, move):
@@ -1010,7 +1281,7 @@ def CHECKMATE(colour):
 def STALEMATE():
   print("DRAW")
   print("1/2 - 1/2")
-  
+
 
 board = Grid([
   Piece("king",[3,0], "white", kingMove),
@@ -1053,10 +1324,11 @@ board = Grid([
   Piece("pawn", [7,6], "black", pawnMove),
 ])
 
-wbot = Bot("white", 1)
-bot = Bot("black", 1)
 
-holding = False #Bool to check nothing is being held so that two pieces aren't being picked up 
+wbot = Bot("white", 1)
+bot = Bot("black", 2)
+
+holding = False #Bool to check nothing is being held so that two pieces aren't being picked up
 
 print("""
 ######################### CHESS ########################
